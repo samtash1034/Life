@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,8 +23,7 @@ import java.util.List;
  * 提供Excel檔案上傳和處理的API端點
  */
 @Slf4j
-@RestController
-@RequestMapping("/api/excel")
+@Controller
 @RequiredArgsConstructor
 public class ExcelController {
 
@@ -30,43 +31,11 @@ public class ExcelController {
     private final GoogleDriveService googleDriveService;
 
     /**
-     * 處理Excel檔案並返回處理後的檔案
-     * @param file 上傳的Excel檔案
-     * @return 處理後的Excel檔案
+     * 顯示Excel上傳頁面
      */
-    @PostMapping(value = "/process", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<byte[]> processExcel(@RequestParam("file") MultipartFile file) {
-        try {
-            // 檢查檔案是否為空
-            if (file.isEmpty()) {
-                return ResponseEntity.badRequest().build();
-            }
-
-            // 檢查檔案格式是否為Excel
-            if (!isExcelFile(file)) {
-                return ResponseEntity.badRequest().build();
-            }
-
-            // 處理Excel檔案
-            byte[] processedExcel = excelProcessingService.processExcel(file);
-            
-            // 產生下載檔案名稱
-            String filename = "processed_expenses_" + 
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".xlsx";
-
-            // 設定回應標頭
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-            headers.setContentDispositionFormData("attachment", filename);
-
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(processedExcel);
-
-        } catch (IOException e) {
-            log.error("處理Excel檔案時發生錯誤", e);
-            return ResponseEntity.internalServerError().build();
-        }
+    @GetMapping("/")
+    public String uploadPage() {
+        return "upload";
     }
 
     /**
@@ -74,7 +43,8 @@ public class ExcelController {
      * @param file 上傳的Excel檔案
      * @return 處理結果
      */
-    @PostMapping(value = "/upload-to-drive", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/api/excel/upload-to-drive", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseBody
     public ResponseEntity<String> uploadToGoogleDrive(
             @RequestParam("file") MultipartFile file) {
 
@@ -97,9 +67,8 @@ public class ExcelController {
             List<List<Object>> sheetsData = excelProcessingService.convertToGoogleSheetsFormat(file);
             String newFileId = googleDriveService.createNewGoogleSheetsFile(sheetsData, folderId);
 
-            return ResponseEntity.ok("成功創建Google Sheets檔案到指定資料夾\\n" +
-                "檔案ID: " + newFileId + "\\n" +
-                "檔案連結: https://docs.google.com/spreadsheets/d/" + newFileId + "/edit");
+            return ResponseEntity.ok("上傳成功！" +
+                "資料夾連結: https://drive.google.com/drive/folders/" + folderId);
 
         } catch (IOException e) {
             log.error("處理檔案時發生錯誤", e);

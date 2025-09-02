@@ -4,6 +4,8 @@ import com.sam.life.model.ExpenseRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.usermodel.XSSFColor;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -144,12 +146,30 @@ public class ExcelProcessingService {
             
             Sheet sheet = workbook.createSheet("處理後的記帳資料");
             
+            // 建立標題列樣式（淺寶藍色2）
+            XSSFCellStyle headerStyle = workbook.createCellStyle();
+            // 使用自定義RGB顏色 - 淺寶藍色2 (#9FC5E8)
+            XSSFColor lightBlue2 = new XSSFColor(new byte[]{(byte)159, (byte)197, (byte)232}, null);
+            headerStyle.setFillForegroundColor(lightBlue2);
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            
             // 建立標題列
             Row headerRow = sheet.createRow(0);
-            headerRow.createCell(0).setCellValue("記帳時間");    // A欄
-            headerRow.createCell(1).setCellValue("交易金額");    // B欄
-            headerRow.createCell(2).setCellValue("二級分類");    // C欄
-            headerRow.createCell(3).setCellValue("備註");       // D欄
+            Cell cell1 = headerRow.createCell(0);
+            cell1.setCellValue("記帳時間");
+            cell1.setCellStyle(headerStyle);
+            
+            Cell cell2 = headerRow.createCell(1);
+            cell2.setCellValue("交易金額");
+            cell2.setCellStyle(headerStyle);
+            
+            Cell cell3 = headerRow.createCell(2);
+            cell3.setCellValue("二級分類");
+            cell3.setCellStyle(headerStyle);
+            
+            Cell cell4 = headerRow.createCell(3);
+            cell4.setCellValue("備註");
+            cell4.setCellStyle(headerStyle);
             
             // 填入資料列
             for (int i = 0; i < records.size(); i++) {
