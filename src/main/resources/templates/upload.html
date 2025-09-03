@@ -97,6 +97,19 @@
     <div class="container">
         <h1>Excel 檔案上傳到 Google Drive</h1>
         
+        <!-- CSV轉換器連結 -->
+        <div style="background-color: #f0f8ff; border: 1px solid #0066cc; border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: center;">
+            <h3 style="margin: 0 0 10px 0; color: #0066cc;">📋 CSV 檔案轉換</h3>
+            <p style="margin: 5px 0; color: #333;">如果你有 CSV 檔案需要轉換為 Excel 格式，可以使用以下工具：</p>
+            <a href="https://convertio.co/zh/csv-xlsx/" target="_blank" 
+               style="display: inline-block; background-color: #0066cc; color: white; padding: 10px 20px; 
+                      text-decoration: none; border-radius: 5px; margin-top: 5px; font-weight: bold;"
+               onmouseover="this.style.backgroundColor='#0052a3'" 
+               onmouseout="this.style.backgroundColor='#0066cc'">
+               🔄 CSV 轉 Excel 轉換器
+            </a>
+        </div>
+        
         <form id="uploadForm" enctype="multipart/form-data">
             <div class="upload-form">
                 <p>選擇要上傳的 Excel 檔案</p>
@@ -107,13 +120,14 @@
                 <div class="file-name" id="fileName"></div>
                 
                 <div style="margin: 20px 0;">
-                    <label for="sheetTitle" style="display: block; margin-bottom: 5px; font-weight: bold;">Sheet 標題（選填）</label>
+                    <label for="sheetTitle" style="display: block; margin-bottom: 5px; font-weight: bold; color: #e74c3c;">Sheet 標題（必填）*</label>
                     <input type="text" 
                            id="sheetTitle" 
                            name="sheetTitle" 
-                           placeholder="例如：記帳資料_0103" 
-                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                    <small style="color: #666; margin-top: 5px; display: block;">留空將使用預設名稱</small>
+                           placeholder="例如：9月" 
+                           required
+                           style="width: 100%; padding: 8px; border: 2px solid #e74c3c; border-radius: 5px; box-sizing: border-box;">
+                    <small style="color: #e74c3c; margin-top: 5px; display: block;">* 必須填寫（建議使用月份，如：9月）</small>
                 </div>
                 
                 <button type="submit" class="submit-btn" id="submitBtn">上傳到 Google Drive</button>
@@ -134,6 +148,16 @@
         const submitBtn = document.getElementById('submitBtn');
         const loading = document.getElementById('loading');
         const result = document.getElementById('result');
+        const sheetTitleInput = document.getElementById('sheetTitle');
+        
+        // 設定預設的月份
+        function setDefaultMonth() {
+            const currentMonth = new Date().getMonth() + 1; // getMonth() 返回 0-11，所以要加1
+            sheetTitleInput.value = currentMonth + '月';
+        }
+        
+        // 頁面載入時設定預設月份
+        setDefaultMonth();
 
         fileInput.addEventListener('change', function() {
             if (this.files[0]) {
@@ -147,6 +171,8 @@
             e.preventDefault();
             
             const file = fileInput.files[0];
+            const sheetTitle = sheetTitleInput.value.trim();
+            
             if (!file) {
                 showResult('請選擇一個檔案', 'error');
                 return;
@@ -154,6 +180,11 @@
 
             if (!file.name.match(/\.(xlsx|xls)$/i)) {
                 showResult('請選擇 Excel 檔案 (.xlsx 或 .xls)', 'error');
+                return;
+            }
+            
+            if (!sheetTitle) {
+                showResult('請輸入 Sheet 標題', 'error');
                 return;
             }
 
@@ -165,11 +196,8 @@
             const formData = new FormData();
             formData.append('file', file);
             
-            // 添加sheet標題（如果有填寫）
-            const sheetTitle = document.getElementById('sheetTitle').value.trim();
-            if (sheetTitle) {
-                formData.append('sheetTitle', sheetTitle);
-            }
+            // 添加sheet標題（必填）
+            formData.append('sheetTitle', sheetTitle);
 
             try {
                 const response = await fetch('/api/excel/upload-to-drive', {

@@ -257,12 +257,28 @@ public class GoogleDriveService {
             if (targetFileId != null && !targetFileId.isEmpty()) {
                 try {
                     copySheetToTargetFileAtPosition(newFileId, sourceSheetId, targetFileId, actualSheetTitle);
+                    
+                    // 複製成功後刪除臨時檔案
+                    log.info("複製完成，準備刪除臨時檔案: {}", newFileId);
+                    deleteFile(newFileId);
+                    
                 } catch (IOException e) {
                     // 如果複製失敗（可能是Office檔案），嘗試直接寫入資料
                     if (e.getMessage().contains("Office file") || e.getMessage().contains("badRequest")) {
                         log.warn("目標檔案可能是Office格式，嘗試直接寫入資料");
                         appendDataToTargetFile(targetFileId, expenseData);
+                        
+                        // 資料附加成功後刪除臨時檔案
+                        log.info("資料附加完成，準備刪除臨時檔案: {}", newFileId);
+                        deleteFile(newFileId);
+                        
                     } else {
+                        // 如果是其他錯誤，也嘗試刪除臨時檔案（但不拋出刪除錯誤）
+                        try {
+                            deleteFile(newFileId);
+                        } catch (Exception deleteEx) {
+                            log.warn("清理臨時檔案失敗，但不影響主要操作: {}", deleteEx.getMessage());
+                        }
                         throw e;
                     }
                 }
@@ -431,6 +447,24 @@ public class GoogleDriveService {
         } catch (IOException e) {
             log.error("無法附加資料到目標檔案: {}", e.getMessage());
             throw new IOException("無法將資料附加到目標檔案: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 刪除指定的Google Drive檔案
+     * @param fileId 要刪除的檔案ID
+     * @throws IOException Google Drive API錯誤
+     * @throws GeneralSecurityException 安全性錯誤
+     */
+    public void deleteFile(String fileId) throws IOException, GeneralSecurityException {
+        Drive driveService = createDriveService();
+        
+        try {
+            driveService.files().delete(fileId).execute();
+            log.info("已成功刪除檔案: {}", fileId);
+        } catch (IOException e) {
+            log.error("刪除檔案失敗: {}", e.getMessage());
+            throw new IOException("無法刪除檔案: " + e.getMessage(), e);
         }
     }
 

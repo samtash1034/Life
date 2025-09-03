@@ -4,6 +4,7 @@ import com.sam.life.service.ExcelProcessingService;
 import com.sam.life.service.GoogleDriveService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -43,14 +44,17 @@ public class ExcelController {
      * @param file 上傳的Excel檔案
      * @return 處理結果
      */
+    @Value("${google.drive.folder-id}")
+    private String folderId;
+    
+    @Value("${google.drive.target-file-id}")
+    private String targetFileId;
+
     @PostMapping(value = "/api/excel/upload-to-drive", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseBody
     public ResponseEntity<String> uploadToGoogleDrive(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "sheetTitle", required = false) String sheetTitle) {
-
-        String folderId = "1iGC8wxPTU0FntFwiA0_KlInnKO4Sz8nn";
-        String targetFileId = "1GPcl20VezwZ9QFBzDiQvQ1yXkLeVIYWt3j7nYEKI0_4";
+            @RequestParam("sheetTitle") String sheetTitle) {
 
         try {
             // 檢查檔案是否為空
@@ -62,6 +66,11 @@ public class ExcelController {
             if (!isExcelFile(file)) {
                 return ResponseEntity.badRequest().body("請上傳Excel檔案 (.xlsx 或 .xls)");
             }
+            
+            // 檢查sheet標題是否為空
+            if (sheetTitle == null || sheetTitle.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("請輸入Sheet標題");
+            }
 
             log.info("開始處理Excel檔案並創建到指定資料夾，同時複製到目標檔案");
 
@@ -70,7 +79,6 @@ public class ExcelController {
             String newFileId = googleDriveService.createAndCopySheetToTarget(sheetsData, folderId, targetFileId, sheetTitle);
 
             return ResponseEntity.ok("上傳成功！\n" +
-                "新檔案資料夾連結: https://drive.google.com/drive/folders/" + folderId + "\n" +
                 "資料已複製到目標檔案: https://docs.google.com/spreadsheets/d/" + targetFileId);
 
         } catch (IOException e) {
