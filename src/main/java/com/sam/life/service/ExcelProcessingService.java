@@ -3,13 +3,9 @@ package com.sam.life.service;
 import com.sam.life.model.ExpenseRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.xssf.usermodel.XSSFColor;
-import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -28,23 +24,6 @@ import java.util.List;
 public class ExcelProcessingService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-    /**
-     * 處理上傳的Excel檔案
-     * @param file 上傳的Excel檔案
-     * @return 處理後的Excel檔案位元組
-     * @throws IOException 檔案讀取錯誤
-     */
-    public byte[] processExcel(MultipartFile file) throws IOException {
-        // 1. 讀取Excel檔案並提取資料
-        List<ExpenseRecord> records = readExcelFile(file);
-        
-        // 2. 按照記帳時間升序排列
-        records.sort(Comparator.comparing(ExpenseRecord::getTime));
-        
-        // 3. 建立新的Excel檔案
-        return createExcelFile(records);
-    }
 
     /**
      * 讀取Excel檔案並提取指定欄位的資料
@@ -131,64 +110,6 @@ public class ExcelProcessingService {
                 return String.valueOf(cell.getBooleanCellValue());
             default:
                 return "";
-        }
-    }
-
-    /**
-     * 建立處理後的Excel檔案
-     * @param records 費用記錄清單
-     * @return Excel檔案位元組
-     * @throws IOException 檔案建立錯誤
-     */
-    private byte[] createExcelFile(List<ExpenseRecord> records) throws IOException {
-        try (XSSFWorkbook workbook = new XSSFWorkbook();
-             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            
-            Sheet sheet = workbook.createSheet("處理後的記帳資料");
-            
-            // 建立標題列樣式（淺寶藍色2）
-            XSSFCellStyle headerStyle = workbook.createCellStyle();
-            // 使用自定義RGB顏色 - 淺寶藍色2 (#9FC5E8)
-            XSSFColor lightBlue2 = new XSSFColor(new byte[]{(byte)159, (byte)197, (byte)232}, null);
-            headerStyle.setFillForegroundColor(lightBlue2);
-            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            
-            // 建立標題列
-            Row headerRow = sheet.createRow(0);
-            Cell cell1 = headerRow.createCell(0);
-            cell1.setCellValue("記帳時間");
-            cell1.setCellStyle(headerStyle);
-            
-            Cell cell2 = headerRow.createCell(1);
-            cell2.setCellValue("交易金額");
-            cell2.setCellStyle(headerStyle);
-            
-            Cell cell3 = headerRow.createCell(2);
-            cell3.setCellValue("二級分類");
-            cell3.setCellStyle(headerStyle);
-            
-            Cell cell4 = headerRow.createCell(3);
-            cell4.setCellValue("備註");
-            cell4.setCellStyle(headerStyle);
-            
-            // 填入資料列
-            for (int i = 0; i < records.size(); i++) {
-                ExpenseRecord record = records.get(i);
-                Row row = sheet.createRow(i + 1);
-                
-                row.createCell(0).setCellValue(record.getTime().format(DATE_FORMATTER));
-                row.createCell(1).setCellValue(record.getAmount().doubleValue());
-                row.createCell(2).setCellValue(record.getSecondaryCategory());  // C欄：二級分類
-                row.createCell(3).setCellValue(record.getNotes());              // D欄：備註
-            }
-            
-            // 自動調整欄位寬度
-            for (int i = 0; i < 4; i++) {
-                sheet.autoSizeColumn(i);
-            }
-            
-            workbook.write(outputStream);
-            return outputStream.toByteArray();
         }
     }
 
