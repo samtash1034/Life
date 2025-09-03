@@ -5,18 +5,17 @@ import com.sam.life.service.GoogleDriveService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -39,11 +38,6 @@ public class ExcelController {
         return "upload";
     }
 
-    /**
-     * 新增資料到Google Drive中的現有Excel檔案
-     * @param file 上傳的Excel檔案
-     * @return 處理結果
-     */
     @Value("${google.drive.folder-id}")
     private String folderId;
     
@@ -72,14 +66,15 @@ public class ExcelController {
                 return ResponseEntity.badRequest().body("請輸入Sheet標題");
             }
 
-            log.info("開始處理Excel檔案並創建到指定資料夾，同時複製到目標檔案");
+            log.info("開始處理Excel檔案並直接新增到目標檔案");
 
-            // 轉換為Google Sheets格式，創建新檔案並複製到目標檔案
+            // 轉換為Google Sheets格式，直接在目標檔案中創建新sheet
             List<List<Object>> sheetsData = excelProcessingService.convertToGoogleSheetsFormat(file);
-            String newFileId = googleDriveService.createAndCopySheetToTarget(sheetsData, folderId, targetFileId, sheetTitle);
+            googleDriveService.addSheetDirectlyToTarget(sheetsData, targetFileId, sheetTitle);
 
             return ResponseEntity.ok("上傳成功！\n" +
-                "資料已複製到目標檔案: https://docs.google.com/spreadsheets/d/" + targetFileId);
+                "已在目標檔案中新增sheet「" + sheetTitle + "」\n" +
+                "檔案連結: https://docs.google.com/spreadsheets/d/" + targetFileId);
 
         } catch (IOException e) {
             log.error("處理檔案時發生錯誤", e);

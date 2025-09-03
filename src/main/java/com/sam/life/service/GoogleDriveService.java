@@ -10,7 +10,6 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.drive.Drive;
-import com.google.api.services.drive.model.File;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
@@ -465,6 +464,74 @@ public class GoogleDriveService {
         } catch (IOException e) {
             log.error("刪除檔案失敗: {}", e.getMessage());
             throw new IOException("無法刪除檔案: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 直接在目標檔案中創建新的sheet並寫入資料
+     * @param expenseData 處理後的費用資料
+     * @param targetFileId 目標Google Sheets檔案ID
+     * @param sheetTitle 新sheet的標題
+     * @throws IOException Google Sheets API錯誤
+     * @throws GeneralSecurityException 安全性錯誤
+     */
+    public void addSheetDirectlyToTarget(List<List<Object>> expenseData, String targetFileId, String sheetTitle) 
+            throws IOException, GeneralSecurityException {
+        
+        Sheets sheetsService = createSheetsService();
+        
+        try {
+            // 1. 先取得目標檔案的資訊
+            Spreadsheet targetSpreadsheet = sheetsService.spreadsheets()
+                    .get(targetFileId)
+                    .execute();
+            
+            int totalSheets = targetSpreadsheet.getSheets().size();
+            
+            // 2. 創建新的sheet並設定位置
+            String actualSheetTitle = (sheetTitle != null && !sheetTitle.trim().isEmpty()) 
+                    ? sheetTitle : "記帳資料_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMdd"));
+            
+            // 計算倒數第六個位置的索引
+            int targetIndex = 0;
+            
+            // 3. 建立新增sheet的請求
+            List<Request> requests = new ArrayList<>();
+            
+            // 新增sheet請求
+            AddSheetRequest addSheetRequest = new AddSheetRequest();
+            SheetProperties sheetProperties = new SheetProperties();
+            sheetProperties.setTitle(actualSheetTitle);
+            sheetProperties.setIndex(targetIndex);
+            addSheetRequest.setProperties(sheetProperties);
+            
+            requests.add(new Request().setAddSheet(addSheetRequest));
+            
+            // 執行批次更新來新增sheet
+            BatchUpdateSpreadsheetRequest batchRequest = new BatchUpdateSpreadsheetRequest()
+                    .setRequests(requests);
+            
+            BatchUpdateSpreadsheetResponse batchResponse = sheetsService.spreadsheets()
+                    .batchUpdate(targetFileId, batchRequest)
+                    .execute();
+            
+            log.info("已在目標檔案中創建新的sheet: {} (位置: {})", actualSheetTitle, targetIndex);
+            
+            // 4. 將資料寫入新創建的sheet
+            String range = actualSheetTitle + "!A1";
+            ValueRange valueRange = new ValueRange();
+            valueRange.setValues(expenseData);
+            
+            sheetsService.spreadsheets().values()
+                    .update(targetFileId, range, valueRange)
+                    .setValueInputOption("RAW")
+                    .execute();
+            
+            log.info("已將{}筆資料寫入新創建的sheet: {}", expenseData.size() - 1, actualSheetTitle);
+            
+        } catch (IOException e) {
+            log.error("直接創建sheet失敗: {}", e.getMessage());
+            throw new IOException("無法在目標檔案中創建sheet: " + e.getMessage(), e);
         }
     }
 

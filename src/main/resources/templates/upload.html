@@ -126,8 +126,8 @@
                            name="sheetTitle" 
                            placeholder="例如：9月" 
                            required
-                           style="width: 100%; padding: 8px; border: 2px solid #e74c3c; border-radius: 5px; box-sizing: border-box;">
-                    <small style="color: #e74c3c; margin-top: 5px; display: block;">* 必須填寫（建議使用月份，如：9月）</small>
+                           style="width: 100%; padding: 8px; border: 2px solid #e74c3c; border-radius: 5px; box-sizing: border-box; transition: border-color 0.3s ease;">
+                    <small id="sheetTitleHint" style="color: #e74c3c; margin-top: 5px; display: block;">* 必須填寫（建議使用月份，如：9月）</small>
                 </div>
                 
                 <button type="submit" class="submit-btn" id="submitBtn">上傳到 Google Drive</button>
@@ -158,6 +158,31 @@
         
         // 頁面載入時設定預設月份
         setDefaultMonth();
+        
+        // 設定輸入框的動態樣式
+        function updateInputStyle() {
+            const input = sheetTitleInput;
+            const hint = document.getElementById('sheetTitleHint');
+            
+            if (input.value.trim()) {
+                // 有輸入內容時：綠色邊框，正常提示文字
+                input.style.borderColor = '#28a745';
+                hint.style.color = '#666';
+                hint.textContent = '建議使用月份，如：9月';
+            } else {
+                // 沒有輸入內容時：紅色邊框，必填提示
+                input.style.borderColor = '#e74c3c';
+                hint.style.color = '#e74c3c';
+                hint.textContent = '* 必須填寫（建議使用月份，如：9月）';
+            }
+        }
+        
+        // 監聽輸入框變化
+        sheetTitleInput.addEventListener('input', updateInputStyle);
+        sheetTitleInput.addEventListener('blur', updateInputStyle);
+        
+        // 頁面載入後檢查一次（因為有預設值）
+        updateInputStyle();
 
         fileInput.addEventListener('change', function() {
             if (this.files[0]) {
