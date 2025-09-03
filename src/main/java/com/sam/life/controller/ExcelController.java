@@ -46,9 +46,11 @@ public class ExcelController {
     @PostMapping(value = "/api/excel/upload-to-drive", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseBody
     public ResponseEntity<String> uploadToGoogleDrive(
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "sheetTitle", required = false) String sheetTitle) {
 
         String folderId = "1iGC8wxPTU0FntFwiA0_KlInnKO4Sz8nn";
+        String targetFileId = "1GPcl20VezwZ9QFBzDiQvQ1yXkLeVIYWt3j7nYEKI0_4";
 
         try {
             // 檢查檔案是否為空
@@ -61,21 +63,22 @@ public class ExcelController {
                 return ResponseEntity.badRequest().body("請上傳Excel檔案 (.xlsx 或 .xls)");
             }
 
-            log.info("開始處理Excel檔案並創建到指定資料夾");
+            log.info("開始處理Excel檔案並創建到指定資料夾，同時複製到目標檔案");
 
-            // 轉換為Google Sheets格式並在指定資料夾創建新檔案
+            // 轉換為Google Sheets格式，創建新檔案並複製到目標檔案
             List<List<Object>> sheetsData = excelProcessingService.convertToGoogleSheetsFormat(file);
-            String newFileId = googleDriveService.createNewGoogleSheetsFile(sheetsData, folderId);
+            String newFileId = googleDriveService.createAndCopySheetToTarget(sheetsData, folderId, targetFileId, sheetTitle);
 
-            return ResponseEntity.ok("上傳成功！" +
-                "資料夾連結: https://drive.google.com/drive/folders/" + folderId);
+            return ResponseEntity.ok("上傳成功！\n" +
+                "新檔案資料夾連結: https://drive.google.com/drive/folders/" + folderId + "\n" +
+                "資料已複製到目標檔案: https://docs.google.com/spreadsheets/d/" + targetFileId);
 
         } catch (IOException e) {
             log.error("處理檔案時發生錯誤", e);
             // 提供更詳細的錯誤訊息
             if (e.getMessage().contains("認證檔案")) {
                 return ResponseEntity.internalServerError().body("Google認證設定錯誤: " + e.getMessage());
-            } else if (e.getMessage().contains("無法新增工作表")) {
+            } else if (e.getMessage().contains("無法新增工作表") || e.getMessage().contains("無法複製sheet")) {
                 return ResponseEntity.badRequest().body("Google Drive操作失敗: " + e.getMessage());
             }
             return ResponseEntity.internalServerError().body("檔案處理錯誤: " + e.getMessage());

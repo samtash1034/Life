@@ -24,6 +24,7 @@ import java.io.InputStreamReader;
 import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -184,6 +185,252 @@ public class GoogleDriveService {
         } catch (IOException e) {
             log.error("Google Sheets API操作失敗: {}", e.getMessage());
             throw new IOException("無法創建Google Sheets檔案: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 創建新的Google Sheets檔案並複製第一個sheet到目標檔案
+     * @param expenseData 處理後的費用資料
+     * @param parentFolderId 父資料夾ID (可選)
+     * @param targetFileId 目標Google Sheets檔案ID，用於複製sheet
+     * @param sheetTitle 自定義的sheet標題
+     * @return 新建立的Google Sheets檔案ID
+     * @throws IOException Google Drive API錯誤
+     * @throws GeneralSecurityException 安全性錯誤
+     */
+    public String createAndCopySheetToTarget(List<List<Object>> expenseData, String parentFolderId, 
+            String targetFileId, String sheetTitle) 
+            throws IOException, GeneralSecurityException {
+        
+        Sheets sheetsService = createSheetsService();
+        
+        try {
+            // 1. 創建新的Google Sheets檔案
+            String fileName = "記帳資料_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+            
+            Spreadsheet spreadsheet = new Spreadsheet();
+            SpreadsheetProperties properties = new SpreadsheetProperties();
+            properties.setTitle(fileName);
+            spreadsheet.setProperties(properties);
+            
+            // 建立工作表
+            Sheet sheet = new Sheet();
+            SheetProperties sheetProperties = new SheetProperties();
+            // 使用傳入的sheet標題，如果為空則使用預設值
+            String actualSheetTitle = (sheetTitle != null && !sheetTitle.trim().isEmpty()) 
+                    ? sheetTitle : "記帳資料_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMdd"));
+            sheetProperties.setTitle(actualSheetTitle);
+            sheet.setProperties(sheetProperties);
+            spreadsheet.setSheets(Collections.singletonList(sheet));
+            
+            // 執行創建請求
+            Spreadsheet createdSpreadsheet = sheetsService.spreadsheets()
+                    .create(spreadsheet)
+                    .execute();
+            
+            String newFileId = createdSpreadsheet.getSpreadsheetId();
+            Integer sourceSheetId = createdSpreadsheet.getSheets().get(0).getProperties().getSheetId();
+            
+            // 如果指定了父資料夾，將檔案移動到該資料夾
+            if (parentFolderId != null && !parentFolderId.isEmpty()) {
+                Drive driveService = createDriveService();
+                driveService.files().update(newFileId, null)
+                        .setAddParents(parentFolderId)
+                        .execute();
+                log.info("已將檔案移動到指定資料夾: {}", parentFolderId);
+            }
+            
+            log.info("已創建新的Google Sheets檔案: {} (ID: {})", fileName, newFileId);
+            
+            // 2. 將資料寫入新檔案
+            ValueRange valueRange = new ValueRange();
+            valueRange.setValues(expenseData);
+            
+            sheetsService.spreadsheets().values()
+                    .update(newFileId, "A1", valueRange)
+                    .setValueInputOption("RAW")
+                    .execute();
+            
+            log.info("已將{}筆資料寫入新的Google Sheets檔案", expenseData.size() - 1);
+            
+            // 3. 嘗試複製sheet到目標檔案或直接寫入資料
+            if (targetFileId != null && !targetFileId.isEmpty()) {
+                try {
+                    copySheetToTargetFileAtPosition(newFileId, sourceSheetId, targetFileId, actualSheetTitle);
+                } catch (IOException e) {
+                    // 如果複製失敗（可能是Office檔案），嘗試直接寫入資料
+                    if (e.getMessage().contains("Office file") || e.getMessage().contains("badRequest")) {
+                        log.warn("目標檔案可能是Office格式，嘗試直接寫入資料");
+                        appendDataToTargetFile(targetFileId, expenseData);
+                    } else {
+                        throw e;
+                    }
+                }
+            }
+            
+            return newFileId;
+            
+        } catch (IOException e) {
+            log.error("Google Sheets API操作失敗: {}", e.getMessage());
+            throw new IOException("無法創建Google Sheets檔案: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 複製指定的sheet到目標Google Sheets檔案的特定位置
+     * @param sourceFileId 來源檔案ID
+     * @param sourceSheetId 來源sheet ID
+     * @param targetFileId 目標檔案ID
+     * @param sheetTitle 新sheet的標題
+     * @throws IOException Google Sheets API錯誤
+     * @throws GeneralSecurityException 安全性錯誤
+     */
+    public void copySheetToTargetFileAtPosition(String sourceFileId, Integer sourceSheetId, 
+            String targetFileId, String sheetTitle) 
+            throws IOException, GeneralSecurityException {
+        
+        Sheets sheetsService = createSheetsService();
+        
+        try {
+            // 先取得目標檔案的所有sheets資訊
+            Spreadsheet targetSpreadsheet = sheetsService.spreadsheets()
+                    .get(targetFileId)
+                    .execute();
+            
+            int totalSheets = targetSpreadsheet.getSheets().size();
+            
+            // 創建複製sheet的請求
+            CopySheetToAnotherSpreadsheetRequest copyRequest = new CopySheetToAnotherSpreadsheetRequest();
+            copyRequest.setDestinationSpreadsheetId(targetFileId);
+            
+            // 執行複製操作
+            SheetProperties copiedSheetProperties = sheetsService.spreadsheets().sheets()
+                    .copyTo(sourceFileId, sourceSheetId, copyRequest)
+                    .execute();
+            
+            Integer copiedSheetId = copiedSheetProperties.getSheetId();
+            
+            // 計算倒數第六個位置的索引（考慮新增的sheet）
+            int targetIndex = 0;
+            
+            // 建立批次更新請求來移動sheet和重命名
+            List<Request> requests = new ArrayList<>();
+            
+            // 移動sheet到指定位置
+            requests.add(new Request()
+                    .setUpdateSheetProperties(new UpdateSheetPropertiesRequest()
+                            .setProperties(new SheetProperties()
+                                    .setSheetId(copiedSheetId)
+                                    .setIndex(targetIndex)
+                                    .setTitle(sheetTitle))
+                            .setFields("index,title")));
+            
+            BatchUpdateSpreadsheetRequest batchRequest = new BatchUpdateSpreadsheetRequest()
+                    .setRequests(requests);
+            
+            sheetsService.spreadsheets()
+                    .batchUpdate(targetFileId, batchRequest)
+                    .execute();
+            
+            log.info("已成功複製sheet到目標檔案 {} 的倒數第六個位置 (索引: {}, 新sheet ID: {}, 標題: {})", 
+                    targetFileId, targetIndex, copiedSheetId, sheetTitle);
+            
+        } catch (IOException e) {
+            log.error("複製sheet失敗: {}", e.getMessage());
+            throw new IOException("無法複製sheet到目標檔案: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 複製指定的sheet到目標Google Sheets檔案
+     * @param sourceFileId 來源檔案ID
+     * @param sourceSheetId 來源sheet ID
+     * @param targetFileId 目標檔案ID
+     * @throws IOException Google Sheets API錯誤
+     * @throws GeneralSecurityException 安全性錯誤
+     */
+    public void copySheetToTargetFile(String sourceFileId, Integer sourceSheetId, String targetFileId) 
+            throws IOException, GeneralSecurityException {
+        
+        Sheets sheetsService = createSheetsService();
+        
+        try {
+            // 創建複製sheet的請求
+            CopySheetToAnotherSpreadsheetRequest copyRequest = new CopySheetToAnotherSpreadsheetRequest();
+            copyRequest.setDestinationSpreadsheetId(targetFileId);
+            
+            // 執行複製操作
+            SheetProperties copiedSheetProperties = sheetsService.spreadsheets().sheets()
+                    .copyTo(sourceFileId, sourceSheetId, copyRequest)
+                    .execute();
+            
+            log.info("已成功複製sheet到目標檔案 {} (新sheet ID: {})", 
+                    targetFileId, copiedSheetProperties.getSheetId());
+            
+        } catch (IOException e) {
+            log.error("複製sheet失敗: {}", e.getMessage());
+            throw new IOException("無法複製sheet到目標檔案: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 直接將資料附加到目標Google Sheets檔案
+     * @param targetFileId 目標檔案ID
+     * @param expenseData 要附加的資料
+     * @throws IOException Google Sheets API錯誤
+     * @throws GeneralSecurityException 安全性錯誤
+     */
+    public void appendDataToTargetFile(String targetFileId, List<List<Object>> expenseData) 
+            throws IOException, GeneralSecurityException {
+        
+        Sheets sheetsService = createSheetsService();
+        
+        try {
+            // 先嘗試讀取目標檔案的第一個工作表
+            Spreadsheet targetSpreadsheet = sheetsService.spreadsheets()
+                    .get(targetFileId)
+                    .execute();
+            
+            String firstSheetName = targetSpreadsheet.getSheets().get(0).getProperties().getTitle();
+            
+            // 找到最後一行
+            String range = firstSheetName + "!A:A";
+            ValueRange result = sheetsService.spreadsheets().values()
+                    .get(targetFileId, range)
+                    .execute();
+            
+            int lastRow = result.getValues() != null ? result.getValues().size() : 0;
+            
+            // 如果檔案是空的，加上標題列
+            if (lastRow == 0 && expenseData.size() > 0) {
+                // 附加所有資料（包含標題）
+                ValueRange valueRange = new ValueRange();
+                valueRange.setValues(expenseData);
+                
+                sheetsService.spreadsheets().values()
+                        .append(targetFileId, firstSheetName + "!A1", valueRange)
+                        .setValueInputOption("RAW")
+                        .execute();
+                
+                log.info("已將{}筆資料（含標題）附加到目標檔案", expenseData.size());
+            } else if (expenseData.size() > 1) {
+                // 只附加資料列（跳過標題）
+                List<List<Object>> dataWithoutHeader = expenseData.subList(1, expenseData.size());
+                ValueRange valueRange = new ValueRange();
+                valueRange.setValues(dataWithoutHeader);
+                
+                String appendRange = String.format("%s!A%d", firstSheetName, lastRow + 1);
+                sheetsService.spreadsheets().values()
+                        .append(targetFileId, appendRange, valueRange)
+                        .setValueInputOption("RAW")
+                        .execute();
+                
+                log.info("已將{}筆資料附加到目標檔案第{}行", dataWithoutHeader.size(), lastRow + 1);
+            }
+            
+        } catch (IOException e) {
+            log.error("無法附加資料到目標檔案: {}", e.getMessage());
+            throw new IOException("無法將資料附加到目標檔案: " + e.getMessage(), e);
         }
     }
 

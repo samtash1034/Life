@@ -105,6 +105,17 @@
                     <input type="file" id="file" name="file" accept=".xlsx,.xls" required>
                 </div>
                 <div class="file-name" id="fileName"></div>
+                
+                <div style="margin: 20px 0;">
+                    <label for="sheetTitle" style="display: block; margin-bottom: 5px; font-weight: bold;">Sheet 標題（選填）</label>
+                    <input type="text" 
+                           id="sheetTitle" 
+                           name="sheetTitle" 
+                           placeholder="例如：記帳資料_0103" 
+                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                    <small style="color: #666; margin-top: 5px; display: block;">留空將使用預設名稱</small>
+                </div>
+                
                 <button type="submit" class="submit-btn" id="submitBtn">上傳到 Google Drive</button>
             </div>
         </form>
@@ -153,6 +164,12 @@
 
             const formData = new FormData();
             formData.append('file', file);
+            
+            // 添加sheet標題（如果有填寫）
+            const sheetTitle = document.getElementById('sheetTitle').value.trim();
+            if (sheetTitle) {
+                formData.append('sheetTitle', sheetTitle);
+            }
 
             try {
                 const response = await fetch('/api/excel/upload-to-drive', {
