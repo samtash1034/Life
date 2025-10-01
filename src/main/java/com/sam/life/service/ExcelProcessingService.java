@@ -136,7 +136,7 @@ public class ExcelProcessingService {
         for (ExpenseRecord record : records) {
             List<Object> row = Arrays.asList(
                     record.getTime().format(DATE_FORMATTER),    // A欄：記帳時間
-                    record.getAmount().toString(),              // B欄：交易金額
+                    record.getAmount().doubleValue(),           // B欄：交易金額（使用數字而非字串）
                     record.getSecondaryCategory(),              // C欄：二級分類
                     record.getNotes()                           // D欄：備註
             );
