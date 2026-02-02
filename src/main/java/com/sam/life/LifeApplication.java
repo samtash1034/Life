@@ -23,7 +23,6 @@ public class LifeApplication {
         System.out.println("\n==============================================");
         System.out.println("Application is ready!");
         System.out.println("Upload page: http://localhost:" + port);
-        System.out.println("Google Cloud Console: https://console.cloud.google.com/auth/clients/54598400459-0dv24agthdtnggfgjmf2s6tftq1o1f58.apps.googleusercontent.com?hl=zh-TW&project=life-470903");
         System.out.println("==============================================\n");
     }
 

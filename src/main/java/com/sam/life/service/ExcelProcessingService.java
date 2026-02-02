@@ -3,17 +3,19 @@ package com.sam.life.service;
 import com.sam.life.model.ExpenseRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Excel處理服務
@@ -114,36 +116,78 @@ public class ExcelProcessingService {
     }
 
     /**
-     * 將費用記錄轉換為Google Sheets格式的二維陣列
+     * 建立新的Excel檔案，內容為整理後的費用紀錄
      * @param file 上傳的Excel檔案
-     * @return Google Sheets格式的資料陣列
-     * @throws IOException 檔案讀取錯誤
+     * @param sheetTitle 使用者指定的sheet標題
+     * @return 產生的Excel檔案內容
+     * @throws IOException 檔案處理錯誤
      */
-    public List<List<Object>> convertToGoogleSheetsFormat(MultipartFile file) throws IOException {
-        // 1. 讀取Excel檔案並提取資料
+    public byte[] createProcessedExcel(MultipartFile file, String sheetTitle) throws IOException {
         List<ExpenseRecord> records = readExcelFile(file);
-        
-        // 2. 按照記帳時間升序排列
         records.sort(Comparator.comparing(ExpenseRecord::getTime));
-        
-        // 3. 轉換為Google Sheets格式
-        List<List<Object>> result = new ArrayList<>();
-        
-        // 添加標題列
-        result.add(Arrays.asList("記帳時間", "交易金額", "二級分類", "備註"));
-        
-        // 添加資料列
-        for (ExpenseRecord record : records) {
-            List<Object> row = Arrays.asList(
-                    record.getTime().format(DATE_FORMATTER),    // A欄：記帳時間
-                    record.getAmount().doubleValue(),           // B欄：交易金額（使用數字而非字串）
-                    record.getSecondaryCategory(),              // C欄：二級分類
-                    record.getNotes()                           // D欄：備註
-            );
-            result.add(row);
+
+        String finalTitle = (sheetTitle != null && !sheetTitle.trim().isEmpty())
+                ? sheetTitle.trim()
+                : "記帳資料";
+
+        try (Workbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+
+            Sheet sheet = workbook.createSheet(finalTitle);
+
+            // 建立樣式
+            CreationHelper creationHelper = workbook.getCreationHelper();
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            CellStyle dateStyle = workbook.createCellStyle();
+            short dateFormat = creationHelper.createDataFormat().getFormat("yyyy-mm-dd hh:mm:ss");
+            dateStyle.setDataFormat(dateFormat);
+
+            // 建立標題列
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {"記帳時間", "交易金額", "二級分類", "備註"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // 寫入資料列
+            int rowIndex = 1;
+            for (ExpenseRecord record : records) {
+                if (record.getTime() == null || record.getAmount() == null) {
+                    log.warn("略過缺少必要欄位的紀錄: {}", record);
+                    continue;
+                }
+
+                Row row = sheet.createRow(rowIndex++);
+
+                Cell timeCell = row.createCell(0);
+                timeCell.setCellValue(record.getTime());
+                timeCell.setCellStyle(dateStyle);
+
+                Cell amountCell = row.createCell(1);
+                amountCell.setCellValue(record.getAmount().doubleValue());
+
+                row.createCell(2).setCellValue(
+                        Objects.toString(record.getSecondaryCategory(), "")
+                );
+                row.createCell(3).setCellValue(
+                        Objects.toString(record.getNotes(), "")
+                );
+            }
+
+            // 調整欄寬以便閱讀
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            workbook.write(outputStream);
+            log.info("已生成{}筆記錄的Excel檔案", records.size());
+            return outputStream.toByteArray();
         }
-        
-        log.info("已轉換{}筆記錄為Google Sheets格式", records.size());
-        return result;
     }
 }

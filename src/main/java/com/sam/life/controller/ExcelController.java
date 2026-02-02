@@ -1,10 +1,9 @@
 package com.sam.life.controller;
 
 import com.sam.life.service.ExcelProcessingService;
-import com.sam.life.service.GoogleDriveService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -15,8 +14,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.security.GeneralSecurityException;
-import java.util.List;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Excel處理控制器
@@ -28,7 +27,6 @@ import java.util.List;
 public class ExcelController {
 
     private final ExcelProcessingService excelProcessingService;
-    private final GoogleDriveService googleDriveService;
 
     /**
      * 顯示Excel上傳頁面
@@ -38,59 +36,47 @@ public class ExcelController {
         return "upload";
     }
 
-    @Value("${google.drive.folder-id}")
-    private String folderId;
-    
-    @Value("${google.drive.target-file-id}")
-    private String targetFileId;
-
     @PostMapping(value = "/api/excel/upload-to-drive", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseBody
-    public ResponseEntity<String> uploadToGoogleDrive(
+    public ResponseEntity<byte[]> downloadProcessedExcel(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("sheetTitle") String sheetTitle) {
+            @RequestParam(value = "sheetTitle", required = false) String sheetTitle) {
 
         try {
             // 檢查檔案是否為空
             if (file.isEmpty()) {
-                return ResponseEntity.badRequest().body("檔案不能為空");
+                return ResponseEntity.badRequest()
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .body("檔案不能為空".getBytes(StandardCharsets.UTF_8));
             }
 
             // 檢查檔案格式是否為Excel
             if (!isExcelFile(file)) {
-                return ResponseEntity.badRequest().body("請上傳Excel檔案 (.xlsx 或 .xls)");
+                return ResponseEntity.badRequest()
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .body("請上傳Excel檔案 (.xlsx 或 .xls)".getBytes(StandardCharsets.UTF_8));
             }
             
-            // 檢查sheet標題是否為空
-            if (sheetTitle == null || sheetTitle.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body("請輸入Sheet標題");
-            }
+            log.info("開始處理Excel檔案並生成可下載的檔案");
 
-            log.info("開始處理Excel檔案並直接新增到目標檔案");
-
-            // 轉換為Google Sheets格式，直接在目標檔案中創建新sheet
-            List<List<Object>> sheetsData = excelProcessingService.convertToGoogleSheetsFormat(file);
-            googleDriveService.addSheetDirectlyToTarget(sheetsData, targetFileId, sheetTitle);
-
-            return ResponseEntity.ok("上傳成功！\n" +
-                "已在目標檔案中新增sheet「" + sheetTitle + "」\n" +
-                "檔案連結: https://docs.google.com/spreadsheets/d/" + targetFileId);
+            byte[] processedFile = excelProcessingService.createProcessedExcel(file, sheetTitle);
+            String downloadName = buildFilename(sheetTitle);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(downloadName))
+                    .contentType(MediaType.parseMediaType(
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(processedFile);
 
         } catch (IOException e) {
             log.error("處理檔案時發生錯誤", e);
-            // 提供更詳細的錯誤訊息
-            if (e.getMessage().contains("認證檔案")) {
-                return ResponseEntity.internalServerError().body("Google認證設定錯誤: " + e.getMessage());
-            } else if (e.getMessage().contains("無法新增工作表") || e.getMessage().contains("無法複製sheet")) {
-                return ResponseEntity.badRequest().body("Google Drive操作失敗: " + e.getMessage());
-            }
-            return ResponseEntity.internalServerError().body("檔案處理錯誤: " + e.getMessage());
-        } catch (GeneralSecurityException e) {
-            log.error("Google Drive認證錯誤", e);
-            return ResponseEntity.internalServerError().body("Google Drive認證錯誤，請檢查認證檔案設定");
+            return ResponseEntity.internalServerError()
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(("檔案處理錯誤: " + e.getMessage()).getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             log.error("未知錯誤", e);
-            return ResponseEntity.internalServerError().body("系統錯誤: " + e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(("系統錯誤: " + e.getMessage()).getBytes(StandardCharsets.UTF_8));
         }
     }
 
@@ -102,5 +88,18 @@ public class ExcelController {
     private boolean isExcelFile(MultipartFile file) {
         String filename = file.getOriginalFilename();
         return filename != null && (filename.endsWith(".xlsx") || filename.endsWith(".xls"));
+    }
+
+    private String buildFilename(String sheetTitle) {
+        return "cost.xlsx";
+    }
+
+    private String buildContentDisposition(String filename) {
+        String fallback = filename.replaceAll("[^\\x20-\\x7E]", "_");
+        if (fallback.isBlank()) {
+            fallback = "records.xlsx";
+        }
+        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+        return "attachment; filename=\"" + fallback + "\"; filename*=UTF-8''" + encoded;
     }
 }

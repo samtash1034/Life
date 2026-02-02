@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel 上傳到 Google Drive</title>
+    <title>Excel 轉換下載</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -95,7 +95,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Excel 檔案上傳到 Google Drive</h1>
+        <h1>Excel 檔案整理下載</h1>
         
         <!-- CSV轉換器連結 -->
         <div style="background-color: #f0f8ff; border: 1px solid #0066cc; border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: center;">
@@ -119,26 +119,28 @@
                 </div>
                 <div class="file-name" id="fileName"></div>
                 
-                <div style="margin: 20px 0;">
-                    <label for="sheetTitle" style="display: block; margin-bottom: 5px; font-weight: bold; color: #e74c3c;">Sheet 標題（必填）*</label>
-                    <input type="text" 
-                           id="sheetTitle" 
-                           name="sheetTitle" 
-                           placeholder="例如：9月" 
-                           required
-                           style="width: 100%; padding: 8px; border: 2px solid #e74c3c; border-radius: 5px; box-sizing: border-box; transition: border-color 0.3s ease;">
-                    <small id="sheetTitleHint" style="color: #e74c3c; margin-top: 5px; display: block;">* 必須填寫（建議使用月份，如：9月）</small>
-                </div>
-                
-                <button type="submit" class="submit-btn" id="submitBtn">上傳到 Google Drive</button>
+                <button type="submit" class="submit-btn" id="submitBtn">下載整理後的 Excel</button>
             </div>
         </form>
 
         <div class="loading" id="loading">
-            <p>正在上傳並處理檔案，請稍候...</p>
+            <p>正在處理檔案，請稍候...</p>
         </div>
 
         <div class="result" id="result"></div>
+
+        <!-- 帳本 Google Drive 連結 -->
+        <div style="background-color: #f0fff0; border: 1px solid #28a745; border-radius: 8px; padding: 15px; margin-top: 20px; text-align: center;">
+            <h3 style="margin: 0 0 10px 0; color: #28a745;">📊 帳本 Google Drive</h3>
+            <p style="margin: 5px 0; color: #333;">查看你的帳本資料</p>
+            <a href="https://drive.google.com/drive/folders/1PLMMb-8PRAvR_mBNx-GVAe18fcqCkRSI" target="_blank"
+               style="display: inline-block; background-color: #28a745; color: white; padding: 10px 20px;
+                      text-decoration: none; border-radius: 5px; margin-top: 5px; font-weight: bold;"
+               onmouseover="this.style.backgroundColor='#218838'"
+               onmouseout="this.style.backgroundColor='#28a745'">
+               🗂️ 開啟 Google Drive 帳本資料夾
+            </a>
+        </div>
     </div>
 
     <script>
@@ -148,42 +150,6 @@
         const submitBtn = document.getElementById('submitBtn');
         const loading = document.getElementById('loading');
         const result = document.getElementById('result');
-        const sheetTitleInput = document.getElementById('sheetTitle');
-        
-        // 設定預設的月份
-        function setDefaultMonth() {
-            const currentMonth = new Date().getMonth() + 1; // getMonth() 返回 0-11，所以要加1
-            sheetTitleInput.value = currentMonth + '月';
-        }
-        
-        // 頁面載入時設定預設月份
-        setDefaultMonth();
-        
-        // 設定輸入框的動態樣式
-        function updateInputStyle() {
-            const input = sheetTitleInput;
-            const hint = document.getElementById('sheetTitleHint');
-            
-            if (input.value.trim()) {
-                // 有輸入內容時：綠色邊框，正常提示文字
-                input.style.borderColor = '#28a745';
-                hint.style.color = '#666';
-                hint.textContent = '建議使用月份，如：9月';
-            } else {
-                // 沒有輸入內容時：紅色邊框，必填提示
-                input.style.borderColor = '#e74c3c';
-                hint.style.color = '#e74c3c';
-                hint.textContent = '* 必須填寫（建議使用月份，如：9月）';
-            }
-        }
-        
-        // 監聽輸入框變化
-        sheetTitleInput.addEventListener('input', updateInputStyle);
-        sheetTitleInput.addEventListener('blur', updateInputStyle);
-        
-        // 頁面載入後檢查一次（因為有預設值）
-        updateInputStyle();
-
         fileInput.addEventListener('change', function() {
             if (this.files[0]) {
                 fileName.textContent = '已選擇: ' + this.files[0].name;
@@ -196,8 +162,6 @@
             e.preventDefault();
             
             const file = fileInput.files[0];
-            const sheetTitle = sheetTitleInput.value.trim();
-            
             if (!file) {
                 showResult('請選擇一個檔案', 'error');
                 return;
@@ -208,11 +172,6 @@
                 return;
             }
             
-            if (!sheetTitle) {
-                showResult('請輸入 Sheet 標題', 'error');
-                return;
-            }
-
             // 顯示載入狀態
             submitBtn.disabled = true;
             loading.style.display = 'block';
@@ -221,27 +180,50 @@
             const formData = new FormData();
             formData.append('file', file);
             
-            // 添加sheet標題（必填）
-            formData.append('sheetTitle', sheetTitle);
-
             try {
                 const response = await fetch('/api/excel/upload-to-drive', {
                     method: 'POST',
                     body: formData
                 });
 
-                const responseText = await response.text();
-
                 if (response.ok) {
-                    showResult(responseText, 'success');
-                    // 重置表單
+                    const blob = await response.blob();
+                    const disposition = response.headers.get('Content-Disposition') || '';
+
+                    let filename = 'cost.xlsx';
+                    const utf8Match = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+                    const asciiMatch = disposition.match(/filename="([^"]+)"/i);
+                    if (utf8Match && utf8Match[1]) {
+                        try {
+                            filename = decodeURIComponent(utf8Match[1]);
+                        } catch (err) {
+                            console.warn('Failed to decode UTF-8 filename, fallback to ASCII.', err);
+                            if (asciiMatch && asciiMatch[1]) {
+                                filename = asciiMatch[1];
+                            }
+                        }
+                    } else if (asciiMatch && asciiMatch[1]) {
+                        filename = asciiMatch[1];
+                    }
+
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    showResult('整理完成，檔案已下載：' + filename, 'success');
                     uploadForm.reset();
                     fileName.textContent = '';
                 } else {
-                    showResult('上傳失敗: ' + responseText, 'error');
+                    const errorText = await response.text();
+                    showResult('處理失敗: ' + errorText, 'error');
                 }
             } catch (error) {
-                showResult('上傳失敗: ' + error.message, 'error');
+                showResult('處理失敗: ' + error.message, 'error');
             } finally {
                 // 隱藏載入狀態
                 submitBtn.disabled = false;

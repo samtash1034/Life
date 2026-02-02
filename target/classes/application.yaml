@@ -2,21 +2,5 @@ spring:
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-
-# Google API配置
-google:
-  # Google服務帳戶認證檔案路徑
-  credentials:
-    file:
-      path: ${GOOGLE_CREDENTIALS_PATH:src/main/resources/google-credentials.json}
-  # 應用程式名稱
-  application:
-    name: Life-App
-  # Google Drive配置
-  drive:
-    folder-id: "1iGC8wxPTU0FntFwiA0_KlInnKO4Sz8nn"
-    target-file-id: "1GPcl20VezwZ9QFBzDiQvQ1yXkLeVIYWt3j7nYEKI0_4"
-
-
 server:
   port: 8099
