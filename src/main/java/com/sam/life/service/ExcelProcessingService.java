@@ -9,6 +9,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -33,19 +35,26 @@ public class ExcelProcessingService {
      * @return 費用記錄清單
      * @throws IOException 檔案讀取錯誤
      */
-    private List<ExpenseRecord> readExcelFile(MultipartFile file) throws IOException {
+    private record ParsedExcel(List<ExpenseRecord> records, Integer month) {}
+
+    private ParsedExcel readExcelFile(MultipartFile file) throws IOException {
         List<ExpenseRecord> records = new ArrayList<>();
-        
+        Integer month = null;
+
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
-            
+
             // 從第2列開始讀取（第1列為標題列）
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
-                
+
+                if (i == 1) {
+                    month = parseMonth(row.getCell(0));
+                }
+
                 ExpenseRecord record = new ExpenseRecord();
-                
+
                 // B欄：記帳時間 (index 1)
                 Cell timeCell = row.getCell(1);
                 if (timeCell != null) {
@@ -87,8 +96,36 @@ public class ExcelProcessingService {
                 records.add(record);
             }
         }
-        
-        return records;
+
+        return new ParsedExcel(records, month);
+    }
+
+    /**
+     * 從儲存格解析出月份數字
+     * @param cell A欄儲存格
+     * @return 月份（1-12），無法解析則為null
+     */
+    private Integer parseMonth(Cell cell) {
+        if (cell == null) return null;
+
+        try {
+            if (cell.getCellType() == CellType.NUMERIC) {
+                if (DateUtil.isCellDateFormatted(cell)) {
+                    return cell.getLocalDateTimeCellValue().getMonthValue();
+                }
+                return (int) cell.getNumericCellValue();
+            }
+
+            String value = getCellValueAsString(cell).trim();
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\d{1,2}").matcher(value);
+            if (matcher.find()) {
+                return Integer.parseInt(matcher.group());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse month from cell A2: {}", e.getMessage());
+        }
+
+        return null;
     }
 
     /**
@@ -116,15 +153,23 @@ public class ExcelProcessingService {
     }
 
     /**
+     * 產生的Excel檔案內容與建議檔名
+     */
+    public record ProcessedExcel(byte[] content, String filename) {}
+
+    /**
      * 建立新的Excel檔案，內容為整理後的費用紀錄
      * @param file 上傳的Excel檔案
      * @param sheetTitle 使用者指定的sheet標題
-     * @return 產生的Excel檔案內容
+     * @return 產生的Excel檔案內容與檔名
      * @throws IOException 檔案處理錯誤
      */
-    public byte[] createProcessedExcel(MultipartFile file, String sheetTitle) throws IOException {
-        List<ExpenseRecord> records = readExcelFile(file);
+    public ProcessedExcel createProcessedExcel(MultipartFile file, String sheetTitle) throws IOException {
+        ParsedExcel parsed = readExcelFile(file);
+        List<ExpenseRecord> records = parsed.records();
         records.sort(Comparator.comparing(ExpenseRecord::getTime));
+
+        String filename = (parsed.month() != null ? parsed.month() + "月支出" : "支出") + ".xlsx";
 
         String finalTitle = (sheetTitle != null && !sheetTitle.trim().isEmpty())
                 ? sheetTitle.trim()
@@ -186,8 +231,24 @@ public class ExcelProcessingService {
             }
 
             workbook.write(outputStream);
-            log.info("已生成{}筆記錄的Excel檔案", records.size());
-            return outputStream.toByteArray();
+            log.info("已生成{}筆記錄的Excel檔案: {}", records.size(), filename);
+            return new ProcessedExcel(outputStream.toByteArray(), filename);
         }
+    }
+
+    /**
+     * 將產生的Excel內容固定存到使用者桌面
+     * @param processedFile Excel檔案內容
+     * @param filename 檔名
+     * @return 實際寫入的檔案路徑
+     * @throws IOException 檔案寫入錯誤
+     */
+    public Path saveToDesktop(byte[] processedFile, String filename) throws IOException {
+        Path desktopDir = Path.of(System.getProperty("user.home"), "Desktop");
+        Files.createDirectories(desktopDir);
+        Path target = desktopDir.resolve(filename);
+        Files.write(target, processedFile);
+        log.info("已將Excel檔案寫入桌面: {}", target);
+        return target;
     }
 }
